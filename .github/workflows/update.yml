@@ -1,0 +1,53 @@
+name: Update Homebrew packages
+
+on:
+  repository_dispatch:
+    types:
+      - treease-cli-release
+      - treease-desktop-release
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Update CLI Formula
+        if: github.event.action == 'treease-cli-release'
+        env:
+          VERSION: ${{ github.event.client_payload.version }}
+          CRATE: ${{ github.event.client_payload.crate }}
+        run: |
+          set -euo pipefail
+          url="https://crates.io/api/v1/crates/${CRATE}/${VERSION}/download"
+          sha256="$(curl -fsSL "$url" | sha256sum | awk '{print $1}')"
+          SHA256="$sha256" ruby -0pi -e 'gsub(/url "[^"]+"/, "url \"https://crates.io/api/v1/crates/#{ENV.fetch("CRATE")}/#{ENV.fetch("VERSION")}/download\""); gsub(/sha256 "[^"]+"/, "sha256 \"#{ENV.fetch("SHA256")}\"")' Formula/treease.rb
+
+      - name: Update Desktop Cask
+        if: github.event.action == 'treease-desktop-release'
+        env:
+          VERSION: ${{ github.event.client_payload.version }}
+          TAG: ${{ github.event.client_payload.tag }}
+          ASSET: ${{ github.event.client_payload.asset }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/loggerhead/treease/releases/download/${TAG}/${ASSET}"
+          sha256="$(curl -fL --retry 5 "$url" | sha256sum | awk '{print $1}')"
+          SHA256="$sha256" ruby -0pi -e 'gsub(/version "[^"]+"/, "version \"#{ENV.fetch("VERSION")}\""); gsub(/sha256 "[^"]+"/, "sha256 \"#{ENV.fetch("SHA256")}\"")' Casks/treease.rb
+
+      - name: Create tap update pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore: update Treease Homebrew package"
+          title: "chore: update Treease Homebrew package"
+          body: |
+            Automated update from the Treease release workflow.
+
+            Checksums were calculated from the published crates.io package or
+            GitHub Release asset, respectively.
+          branch: automated/treease-release-${{ github.run_id }}
+          delete-branch: true
