@@ -5,6 +5,30 @@ on:
     types:
       - treease-cli-release
       - treease-desktop-release
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "Package to update"
+        required: true
+        type: choice
+        options: [cli, desktop]
+      version:
+        description: "Published package version"
+        required: true
+        type: string
+      crate:
+        description: "crates.io package name (CLI only)"
+        required: false
+        default: treease-cli
+        type: string
+      tag:
+        description: "GitHub Release tag (Desktop only)"
+        required: false
+        type: string
+      asset:
+        description: "GitHub Release asset (Desktop only)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -17,10 +41,10 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Update CLI Formula
-        if: github.event.action == 'treease-cli-release'
+        if: (github.event_name == 'repository_dispatch' && github.event.action == 'treease-cli-release') || (github.event_name == 'workflow_dispatch' && inputs.kind == 'cli')
         env:
-          VERSION: ${{ github.event.client_payload.version }}
-          CRATE: ${{ github.event.client_payload.crate }}
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.client_payload.version }}
+          CRATE: ${{ github.event_name == 'workflow_dispatch' && inputs.crate || github.event.client_payload.crate }}
         run: |
           set -euo pipefail
           url="https://crates.io/api/v1/crates/${CRATE}/${VERSION}/download"
@@ -28,11 +52,11 @@ jobs:
           SHA256="$sha256" ruby -0pi -e 'gsub(/url "[^"]+"/, "url \"https://crates.io/api/v1/crates/#{ENV.fetch("CRATE")}/#{ENV.fetch("VERSION")}/download\""); gsub(/sha256 "[^"]+"/, "sha256 \"#{ENV.fetch("SHA256")}\"")' Formula/treease.rb
 
       - name: Update Desktop Cask
-        if: github.event.action == 'treease-desktop-release'
+        if: (github.event_name == 'repository_dispatch' && github.event.action == 'treease-desktop-release') || (github.event_name == 'workflow_dispatch' && inputs.kind == 'desktop')
         env:
-          VERSION: ${{ github.event.client_payload.version }}
-          TAG: ${{ github.event.client_payload.tag }}
-          ASSET: ${{ github.event.client_payload.asset }}
+          VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.client_payload.version }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.client_payload.tag }}
+          ASSET: ${{ github.event_name == 'workflow_dispatch' && inputs.asset || github.event.client_payload.asset }}
         run: |
           set -euo pipefail
           url="https://github.com/loggerhead/treease/releases/download/${TAG}/${ASSET}"
