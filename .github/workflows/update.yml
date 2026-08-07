@@ -32,13 +32,18 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+
+concurrency:
+  group: homebrew-update-main
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main
 
       - name: Update CLI Formula
         if: (github.event_name == 'repository_dispatch' && github.event.action == 'treease-cli-release') || (github.event_name == 'workflow_dispatch' && inputs.kind == 'cli')
@@ -63,15 +68,16 @@ jobs:
           sha256="$(curl -fL --retry 5 "$url" | sha256sum | awk '{print $1}')"
           SHA256="$sha256" ruby -0pi -e 'gsub(/version "[^"]+"/, "version \"#{ENV.fetch("VERSION")}\""); gsub(/sha256 "[^"]+"/, "sha256 \"#{ENV.fetch("SHA256")}\"")' Casks/treease.rb
 
-      - name: Create tap update pull request
-        uses: peter-evans/create-pull-request@v7
-        with:
-          commit-message: "chore: update Treease Homebrew package"
-          title: "chore: update Treease Homebrew package"
-          body: |
-            Automated update from the Treease release workflow.
-
-            Checksums were calculated from the published crates.io package or
-            GitHub Release asset, respectively.
-          branch: automated/treease-release-${{ github.run_id }}
-          delete-branch: true
+      - name: Commit and push tap update
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Homebrew package is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/treease.rb Casks/treease.rb
+          git commit -m "chore: update Treease Homebrew package"
+          git push origin HEAD:main
